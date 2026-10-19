@@ -166,7 +166,7 @@
                                 <img src={`https://i.ytimg.com/vi/${v.id}/mqdefault.jpg`} className="w-28 h-16 object-cover rounded-xl bg-gray-100" loading="lazy" />
                                 <div className="flex-1 min-w-0">
                                     <p className="text-sm font-bold text-gray-800 truncate">{v.title || v.id}</p>
-                                    <p className="text-[10px] text-gray-400 font-bold truncate">{v.channel}</p>
+                                    <p className="text-[10px] text-gray-400 font-bold truncate">{v.channel}{v.published ? ` ・ 公開 ${v.published}` : ''}</p>
                                 </div>
                                 <div className="text-right text-[11px] font-black tabular-nums shrink-0">
                                     <p className="text-blue-500">+{v.delta.toLocaleString()}</p>
