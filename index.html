@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Analytics Dashboard</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & ReactDOM -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <!-- prop-types is mandatory for Recharts in some environments -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prop-types/15.8.1/prop-types.min.js"></script>
+    <!-- Babel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <!-- Recharts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.10.3/Recharts.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        body { font-family: 'Inter', sans-serif; margin: 0; padding: 0; background-color: #f9fbff; }
+        .recharts-cartesian-grid-horizontal line, .recharts-cartesian-grid-vertical line { stroke: #f1f5f9; }
+        input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.5); cursor: pointer; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+        .loading-shimmer { background: linear-gradient(90deg, #f0f4f8 25%, #f9fbff 50%, #f0f4f8 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
+        @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // ==========================================
+        // 【重要】ここにGASでデプロイしたウェブアプリのURLを設定してください
+        // ==========================================
+        const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyyXpEjmTmbWQEPUfA4fYaUt75z9AVVnFMyBMGh6RwzBbUE1CllQBG8_Fl-cCXLjuMpPQ/exec";
+
+        // 汎用API通信関数 (fetchを使用し、Content-Type: text/plain でCORSを回避)
+        const apiCall = async (action, params = {}) => {
+            try {
+                const response = await fetch(GAS_WEB_APP_URL, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "text/plain",
+                    },
+                    body: JSON.stringify({ action: action, ...params })
+                });
+                const data = await response.json();
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                return data;
+            } catch (error) {
+                console.error("API Call Error:", error);
+                throw error;
+            }
+        };
+
+        const { useState, useMemo, useEffect } = React;
+        const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell, Legend } = window.Recharts;
+        
+        // --- SVG Icons ---
+        const Icon = ({ name, size = 24, strokeWidth = 2, className = "" }) => {
+            const icons = {
+                LayoutDashboard: <path d="M3 3h7v9H3zM14 3h7v5h-7zM14 11h7v10h-7zM3 15h7v6H3z"/>,
+                Calendar: <React.Fragment><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><path d="M16 2v4M8 2v4M3 10h18"/></React.Fragment>,
+                Filter: <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/>,
+                Eye: <React.Fragment><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></React.Fragment>,
+                Heart: <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l8.84-8.84 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>,
+                MessageCircle: <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>,
+                Video: <React.Fragment><path d="m22 8-6 4 6 4V8Z"/><rect x="2" y="6" width="14" height="12" rx="2" ry="2"/></React.Fragment>,
+                X: <path d="M18 6 6 18M6 6l12 12"/>,
+                Menu: <path d="M4 12h16M4 6h16M4 18h16"/>,
+                Clock: <React.Fragment><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></React.Fragment>,
+                TrendingUp: <React.Fragment><path d="m22 7-8.5 8.5-5-5L2 17"/><path d="M16 7h6v6"/></React.Fragment>
+            };
+            return (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className}>{icons[name] || <circle cx="12" cy="12" r="10" />}</svg>);
+        };
+
+        const STOCK_METRICS_CONFIG = {
+            views: { label: 'Impressions', color: '#3b82f6', iconName: 'Eye' },
+            likes: { label: 'Appreciation', color: '#ec4899', iconName: 'Heart' },
+            comments: { label: 'Engagement', color: '#f59e0b', iconName: 'MessageCircle' },
+            videos: { label: 'Portfolio', color: '#6366f1', iconName: 'Video' }
+        };
+
+        const FLOW_METRICS_CONFIG = {
+            views: { label: 'Views', color: '#3b82f6', key: 'viewDiff', iconName: 'Eye' },
+            likes: { label: 'Likes', color: '#ec4899', key: 'likeDiff', iconName: 'Heart' },
+            comments: { label: 'Comments', color: '#f59e0b', key: 'commentDiff', iconName: 'MessageCircle' },
+            videos: { label: 'New', color: '#6366f1', key: 'videoDiff', iconName: 'Video' }
+        };
+
+        const CHANNEL_METRICS_CONFIG = {
+            views: { label: 'Views', color: '#3b82f6', iconName: 'Eye' },
+            likes: { label: 'Likes', color: '#ec4899', iconName: 'Heart' },
+            comments: { label: 'Comments', color: '#f59e0b', iconName: 'MessageCircle' },
+            videos: { label: 'Videos', color: '#6366f1', iconName: 'Video' }
+        };
+
+        const formatYAxis = (val) => val >= 1000 ? `${(val / 1000).toFixed(1)}k` : val;
+        const formatXAxis = (str) => {
+            if (!str || !str.includes('/')) return str;
+            const p = str.split('/'); return `${parseInt(p[1])}/${parseInt(p[2])}`;
+        };
+
+        const StatCard = ({ label, value, growth, iconName, color, loading }) => {
+            const colorMap = { blue: "bg-blue-50 text-blue-600", pink: "bg-pink-50 text-pink-500", amber: "bg-amber-50 text-amber-500", indigo: "bg-indigo-50 text-indigo-500" };
+            if (loading) return <div className="h-40 rounded-[2rem] loading-shimmer border border-gray-50"></div>;
+            return (
+                <div className="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm border border-gray-50 hover:shadow-xl transition-all duration-500 relative overflow-hidden group">
+                    <div className="absolute bottom-0 right-0 w-24 h-24 bg-gray-50/50 rounded-full blur-3xl translate-y-1/2 translate-x-1/2 group-hover:bg-purple-50 transition-colors" />
+                    <div className="flex justify-between items-start mb-6 relative z-10">
+                        <div className={`p-4 rounded-2xl ${colorMap[color]} shadow-inner transition-transform group-hover:scale-110 duration-500`}>
+                            <Icon name={iconName} size={24} strokeWidth={3} />
+                        </div>
+                        {growth !== 0 && (
+                            <div className={`flex items-center gap-1.5 text-[10px] font-black px-3 py-1.5 rounded-xl border ${growth > 0 ? 'text-emerald-600 bg-emerald-50 border-emerald-100' : 'text-rose-600 bg-rose-50 border-rose-100'}`}>
+                                <Icon name="TrendingUp" size={12} strokeWidth={3} className={growth < 0 ? 'rotate-180' : ''} />
+                                {Math.abs(Math.floor(growth)).toLocaleString()}
+                            </div>
+                        )}
+                    </div>
+                    <div className="relative z-10">
+                        <p className="text-[9px] font-black text-gray-300 uppercase tracking-[0.2em] mb-2">{label}</p>
+                        <h4 className="text-2xl md:text-3xl font-black text-gray-800 tabular-nums tracking-tighter italic">{Math.floor(value).toLocaleString()}</h4>
+                    </div>
+                </div>
+            );
+        };
+
+        const App = () => {
+            const getInitialRange = (days) => {
+                const end = new Date(); const start = new Date();
+                start.setDate(end.getDate() - (days - 1));
+                return { start: start.toISOString().split('T')[0], end: end.toISOString().split('T')[0] };
+            };
+
+            const [keywords, setKeywords] = useState([]);
+            const [selectedKeywords, setSelectedKeywords] = useState([]);
+            const [dateRange, setDateRange] = useState(getInitialRange(14));
+            const [activePreset, setActivePreset] = useState("14");
+            const [activeStockMetric, setActiveStockMetric] = useState('views');
+            const [activeFlowMetric, setActiveFlowMetric] = useState('views');
+            const [activeWeeklyMetric, setActiveWeeklyMetric] = useState('views');
+            const [activeChannelMetric, setActiveChannelMetric] = useState('views');
+
+            const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+            const [data, setData] = useState([]);
+            const [dayStats, setDayStats] = useState([]);
+            const [hourlyTrend, setHourlyTrend] = useState([]);
+            const [hourlyTrendByDay, setHourlyTrendByDay] = useState({});
+            const [selectedHourlyDay, setSelectedHourlyDay] = useState('all');
+
+            const [channelMetrics, setChannelMetrics] = useState([]);
+            const [lastUpdate, setLastUpdate] = useState("-");
+            const [loading, setLoading] = useState(true);
+
+            // APIを使った初期データの取得
+            useEffect(() => {
+                apiCall("getInitialData")
+                    .then(res => {
+                        setKeywords(res.keywords || []);
+                        setSelectedKeywords(res.keywords && res.keywords.length > 0 ? [res.keywords[0]] : []);
+                        setLastUpdate(res.lastUpdate);
+                    })
+                    .catch(err => {
+                        console.error(err);
+                        setLastUpdate("Error loading data");
+                    });
+            }, []);
+
+            // APIを使った分析データの取得
+            useEffect(() => {
+                if (selectedKeywords.length === 0) { setData([]); setLoading(false); return; }
+                setLoading(true);
+                
+                apiCall("getAnalyticsData", { filters: { startDate: dateRange.start, endDate: dateRange.end, selectedKeywords: selectedKeywords } })
+                    .then(res => {
+                        setData(res.history || []);
+                        setDayStats(res.dayOfWeekStats || []);
+                        setHourlyTrend(res.hourlyTrend || []);
+                        setHourlyTrendByDay(res.hourlyTrendByDay || {});
+                        setChannelMetrics(res.channelMetrics || []);
+                        setLoading(false);
+                    })
+                    .catch(err => {
+                        console.error(err);
+                        setLoading(false);
+                    });
+            }, [dateRange, selectedKeywords]);
+
+            const totals = useMemo(() => {
+                if (!data || !data.length) return { views: 0, likes: 0, comments: 0, videos: 0, viewGrowth: 0, likeGrowth: 0, commentGrowth: 0 };
+                const last = data[data.length - 1];
+                return {
+                    views: Number(last.views || 0),
+                    likes: Number(last.likes || 0),
+                    comments: Number(last.comments || 0),
+                    videos: Number(last.totalVideos || 0),
+                    viewGrowth: data.reduce((s, i) => s + (Number(i.viewDiff) || 0), 0),
+                    likeGrowth: data.reduce((s, i) => s + (Number(i.likeDiff) || 0), 0),
+                    commentGrowth: data.reduce((s, i) => s + (Number(i.commentDiff) || 0), 0)
+                };
+            }, [data]);
+
+            const currentHourlyData = useMemo(() => {
+                if (selectedHourlyDay === 'all') return hourlyTrend;
+                return hourlyTrendByDay[selectedHourlyDay] || [];
+            }, [selectedHourlyDay, hourlyTrend, hourlyTrendByDay]);
+
+            const dayLabels = ["日", "月", "火", "水", "木", "金", "土"];
+
+            return (
+                <div className="min-h-screen bg-[#f9fbff] text-gray-900 flex overflow-hidden">
+                    <aside className={`fixed inset-0 z-50 lg:static lg:block bg-white border-r border-gray-100 transition-all duration-500 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'} w-72 h-full overflow-y-auto custom-scrollbar shadow-2xl lg:shadow-none`}>
+                        <div className="p-8">
+                            <div className="flex items-center justify-between mb-10">
+                                <div className="flex items-center gap-3"><div className="w-10 h-10 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 rounded-2xl flex items-center justify-center shadow-lg"><Icon name="LayoutDashboard" className="text-white" size={20} /></div><h1 className="font-black text-xl tracking-tighter uppercase tracking-widest italic">Insight</h1></div>
+                                <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden text-gray-300"><Icon name="X" size={24} /></button>
+                            </div>
+                            <div className="space-y-10">
+                                <section>
+                                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-5 block flex items-center gap-2"><Icon name="Calendar" size={14} className="text-purple-400" /> Date Range</label>
+                                    <div className="grid grid-cols-3 gap-2 p-1 bg-gray-50 rounded-2xl mb-5 border border-gray-100">
+                                        {["7", "14", "30"].map(r => (<button key={r} onClick={() => { setActivePreset(r); setDateRange(getInitialRange(parseInt(r))); }} className={`py-2 text-[10px] font-black rounded-xl transition-all ${activePreset === r ? 'bg-white shadow-md text-purple-600' : 'text-gray-400'}`}>{r}D</button>))}
+                                    </div>
+                                    <div className="space-y-3">
+                                        <div className="relative"><span className="absolute left-3 top-1 text-[8px] font-black text-gray-300 uppercase">From</span><input type="date" value={dateRange.start} onChange={(e) => { setActivePreset("custom"); setDateRange(p=>({...p, start:e.target.value})); }} className="w-full px-3 pt-4 pb-2 bg-gray-50 rounded-xl text-[10px] font-bold outline-none border border-transparent focus:border-purple-200" /></div>
+                                        <div className="relative"><span className="absolute left-3 top-1 text-[8px] font-black text-gray-300 uppercase">To</span><input type="date" value={dateRange.end} onChange={(e) => { setActivePreset("custom"); setDateRange(p=>({...p, end:e.target.value})); }} className="w-full px-3 pt-4 pb-2 bg-gray-50 rounded-xl text-[10px] font-bold outline-none border border-transparent focus:border-purple-200" /></div>
+                                    </div>
+                                </section>
+                                <section>
+                                    <div className="flex items-center justify-between mb-5">
+                                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2"><Icon name="Filter" size={14} className="text-pink-400" /> Keywords</label>
+                                        <div className="flex gap-2">
+                                            <button onClick={()=>setSelectedKeywords([...keywords])} className="text-[9px] font-black text-purple-500 hover:text-purple-700 uppercase">All</button>
+                                            <span className="text-[9px] text-gray-200">|</span>
+                                            <button onClick={()=>setSelectedKeywords([])} className="text-[9px] font-black text-gray-400 hover:text-gray-600 uppercase">None</button>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        {keywords.length > 0 ? keywords.map(kw => (
+                                            <button key={kw} onClick={() => setSelectedKeywords(p => p.includes(kw) ? p.filter(x=>x!==kw) : [...p, kw])} className={`w-full flex items-center justify-between px-5 py-3 rounded-xl text-xs font-bold border transition-all ${selectedKeywords.includes(kw) ? 'bg-purple-50 border-purple-100 text-purple-700 shadow-sm' : 'bg-white border-transparent text-gray-400 hover:bg-gray-50'}`}>
+                                                <span>{kw}</span><div className={`w-2 h-2 rounded-full ${selectedKeywords.includes(kw) ? 'bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.4)]' : 'bg-gray-200'}`}></div>
+                                            </button>
+                                        )) : <p className="text-[10px] text-gray-400 p-4 bg-gray-50 rounded-xl italic text-center">読み込み中...</p>}
+                                    </div>
+                                </section>
+                            </div>
+                        </div>
+                    </aside>
+                    <main className="flex-1 flex flex-col h-screen overflow-y-auto relative custom-scrollbar">
+                        <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-xl border-b border-gray-100 px-6 py-4 flex items-center justify-between">
+                            <div className="flex items-center gap-4"><button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-2"><Icon name="Menu" size={22} className="text-gray-600" /></button><h2 className="font-black text-gray-800 text-lg uppercase italic hidden sm:block tracking-tighter">Executive Overview</h2></div>
+                            <div className="flex items-center gap-2 text-[10px] font-black text-gray-400 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100"><Icon name="Clock" size={12} className="text-purple-400" /> LAST UPDATE: {lastUpdate}</div>
+                        </header>
+                        <div className="p-6 md:p-8 space-y-8 max-w-7xl mx-auto w-full">
+                            {/* KPI Cards */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                                <StatCard label="Impressions" value={totals.views} growth={totals.viewGrowth} iconName="Eye" color="blue" loading={loading} />
+                                <StatCard label="Appreciation" value={totals.likes} growth={totals.likeGrowth} iconName="Heart" color="pink" loading={loading} />
+                                <StatCard label="Engagement" value={totals.comments} growth={totals.commentGrowth} iconName="MessageCircle" color="amber" loading={loading} />
+                                <StatCard label="Portfolio" value={totals.videos} growth={0} iconName="Video" color="indigo" loading={loading} />
+                            </div>
+
+                            {/* Row 1: Stock & Flow */}
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm transition-all hover:shadow-lg">
+                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
+                                        <div><h3 className="font-black text-gray-800 text-lg tracking-tight">Cumulative Assets</h3><p className="text-[10px] text-gray-300 font-black uppercase tracking-widest">Stock Trend Analysis</p></div>
+                                        <div className="flex bg-gray-50 p-1 rounded-2xl border border-gray-100 shadow-inner">
+                                            {Object.keys(STOCK_METRICS_CONFIG).map(k => (
+                                                <button key={k} onClick={()=>setActiveStockMetric(k)} className={`p-2 rounded-xl transition-all ${activeStockMetric===k ? 'bg-white shadow-md' : 'opacity-30 hover:opacity-100'}`}><div style={{color: STOCK_METRICS_CONFIG[k].color}}><Icon name={STOCK_METRICS_CONFIG[k].iconName} size={16} strokeWidth={3} /></div></button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="h-[300px]">{loading ? <div className="h-full w-full rounded-2xl loading-shimmer" /> : 
+                                        data.length > 0 ? <ResponsiveContainer width="100%" height="100%"><AreaChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
+                                            <defs><linearGradient id="grad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={STOCK_METRICS_CONFIG[activeStockMetric].color} stopOpacity={0.2}/><stop offset="95%" stopColor={STOCK_METRICS_CONFIG[activeStockMetric].color} stopOpacity={0}/></linearGradient></defs>
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8', fontWeight: 600 }} dy={10} tickFormatter={formatXAxis} minTickGap={30} />
+                                            <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8', fontWeight: 600 }} tickFormatter={formatYAxis} width={45} /><Tooltip /><Area type="monotone" dataKey={activeStockMetric==='videos'?'totalVideos':activeStockMetric} stroke={STOCK_METRICS_CONFIG[activeStockMetric].color} strokeWidth={4} fill="url(#grad)" animationDuration={1000} dot={{ r: 4, strokeWidth: 2, fill: '#fff', stroke: STOCK_METRICS_CONFIG[activeStockMetric].color }} activeDot={{ r: 6, strokeWidth: 0, fill: STOCK_METRICS_CONFIG[activeStockMetric].color }} />
+                                        </AreaChart></ResponsiveContainer> : <div className="h-full flex items-center justify-center text-gray-300 text-sm italic">該当期間のデータがありません</div>}
+                                    </div>
+                                </div>
+                                <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm transition-all hover:shadow-lg">
+                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
+                                        <div><h3 className="font-black text-gray-800 text-lg tracking-tight">Daily Performance</h3><p className="text-[10px] text-gray-300 font-black uppercase tracking-widest">Flow Delta Analysis</p></div>
+                                        <div className="flex bg-gray-50 p-1 rounded-2xl border border-gray-100 shadow-inner">
+                                            {Object.keys(FLOW_METRICS_CONFIG).map(k => (
+                                                <button key={k} onClick={()=>setActiveFlowMetric(k)} className={`p-2 rounded-xl transition-all ${activeFlowMetric===k ? 'bg-white shadow-md' : 'opacity-30 hover:opacity-100'}`}><div style={{color: FLOW_METRICS_CONFIG[k].color}}><Icon name={FLOW_METRICS_CONFIG[k].iconName} size={16} strokeWidth={3} /></div></button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="h-[300px]">{loading ? <div className="h-full w-full rounded-2xl loading-shimmer" /> : 
+                                        data.length > 0 ? <ResponsiveContainer width="100%" height="100%"><BarChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8', fontWeight: 600 }} dy={10} tickFormatter={formatXAxis} minTickGap={30} />
+                                            <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8', fontWeight: 600 }} tickFormatter={formatYAxis} width={45} /><Tooltip /><Bar dataKey={FLOW_METRICS_CONFIG[activeFlowMetric].key} fill={FLOW_METRICS_CONFIG[activeFlowMetric].color} radius={[10, 10, 0, 0]} animationDuration={1000} />
+                                        </BarChart></ResponsiveContainer> : <div className="h-full flex items-center justify-center text-gray-300 text-sm italic">該当期間のデータがありません</div>}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Row 2: Weekly & 24H Distribution */}
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm transition-all hover:shadow-lg">
+                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
+                                        <div><h3 className="font-black text-gray-800 text-lg tracking-tight flex items-center gap-2 italic"><Icon name="Calendar" className="text-indigo-600" /> 曜日別分析</h3><p className="text-[10px] text-gray-300 font-black uppercase tracking-widest">Average vs Median</p></div>
+                                        {/* Weekly Metric Switcher */}
+                                        <div className="flex bg-gray-50 p-1 rounded-2xl border border-gray-100 shadow-inner">
+                                            {Object.keys(FLOW_METRICS_CONFIG).map(k => (
+                                                <button key={k} onClick={()=>setActiveWeeklyMetric(k)} className={`p-2 rounded-xl transition-all ${activeWeeklyMetric===k ? 'bg-white shadow-md' : 'opacity-30 hover:opacity-100'}`}><div style={{color: FLOW_METRICS_CONFIG[k].color}}><Icon name={FLOW_METRICS_CONFIG[k].iconName} size={16} strokeWidth={3} /></div></button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="h-[300px]">{loading ? <div className="h-full w-full rounded-2xl loading-shimmer" /> : 
+                                        dayStats.length > 0 ? <ResponsiveContainer><BarChart data={dayStats} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize:12, fontWeight:900, fill:'#475569'}} dy={10} /><YAxis axisLine={false} tickLine={false} tickFormatter={formatYAxis} tick={{fontSize:10, fontWeight:700, fill:'#cbd5e1'}} /><Tooltip cursor={{fill: '#f1f5f9'}} />
+                                            <Bar name="Average" dataKey={`${activeWeeklyMetric}Average`} fill={FLOW_METRICS_CONFIG[activeWeeklyMetric].color} radius={[6,6,0,0]} barSize={24} />
+                                            <Bar name="Median" dataKey={`${activeWeeklyMetric}Median`} fill="#cbd5e1" radius={[6,6,0,0]} barSize={24} />
+                                        </BarChart></ResponsiveContainer> : <div className="h-full flex items-center justify-center text-gray-300 text-sm italic">蓄積データが不足しています</div>}
+                                    </div>
+                                </div>
+                                <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm transition-all hover:shadow-lg">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                                        <div><h3 className="font-black text-gray-800 text-lg tracking-tight flex items-center gap-2 italic"><Icon name="Clock" className="text-purple-500" /> 24時間分布トレンド</h3><p className="text-[10px] text-gray-300 font-black uppercase tracking-widest">Hourly Engagement Wave</p></div>
+                                        
+                                        {/* Drill-down Selector */}
+                                        <div className="flex flex-wrap gap-1 bg-gray-50 p-1 rounded-xl border border-gray-100">
+                                            <button 
+                                                onClick={() => setSelectedHourlyDay('all')} 
+                                                className={`px-3 py-1 text-[9px] font-black rounded-lg transition-all ${selectedHourlyDay === 'all' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                                            >
+                                                ALL
+                                            </button>
+                                            {dayLabels.map((d, i) => (
+                                                <button 
+                                                    key={i} 
+                                                    onClick={() => setSelectedHourlyDay(String(i))} 
+                                                    className={`w-7 py-1 text-[9px] font-black rounded-lg transition-all ${selectedHourlyDay === String(i) ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                                                >
+                                                    {d}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="h-[300px] mt-4">{loading ? <div className="h-full w-full rounded-2xl loading-shimmer" /> : 
+                                        currentHourlyData.length > 0 ? <ResponsiveContainer><AreaChart data={currentHourlyData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                            <defs><linearGradient id="wave" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.15}/><stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/></linearGradient></defs>
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="hour" axisLine={false} tickLine={false} tick={{fontSize:10, fontWeight:700, fill:'#cbd5e1'}} minTickGap={20} />
+                                            <YAxis axisLine={false} tickLine={false} tickFormatter={formatYAxis} tick={{fontSize:10, fontWeight:700, fill:'#cbd5e1'}} /><Tooltip /><Area type="monotone" dataKey="value" stroke="#8b5cf6" fill="url(#wave)" strokeWidth={4} dot={false} animationDuration={1000} />
+                                        </AreaChart></ResponsiveContainer> : <div className="h-full flex items-center justify-center text-gray-300 text-sm italic">データ蓄積中（4時間おき実行推奨）</div>}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Row 3: Channel Metrics & Report */}
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 pb-10">
+                                <div className="lg:col-span-2 bg-white p-10 rounded-[2.5rem] shadow-sm border border-gray-100 transition-all hover:shadow-lg">
+                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-10 gap-4">
+                                        <h3 className="font-black text-gray-800 text-xl flex items-center gap-3 italic tracking-tight"><Icon name="Video" size={22} className="text-indigo-500" /> Channel Metrics</h3>
+                                        {/* Channel Metric Switcher */}
+                                        <div className="flex bg-gray-50 p-1 rounded-2xl border border-gray-100 shadow-inner">
+                                            {Object.keys(CHANNEL_METRICS_CONFIG).map(k => (
+                                                <button key={k} onClick={()=>setActiveChannelMetric(k)} className={`p-2 rounded-xl transition-all ${activeChannelMetric===k ? 'bg-white shadow-md' : 'opacity-30 hover:opacity-100'}`}><div style={{color: CHANNEL_METRICS_CONFIG[k].color}}><Icon name={CHANNEL_METRICS_CONFIG[k].iconName} size={16} strokeWidth={3} /></div></button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
+                                        {channelMetrics.length > 0 ? channelMetrics.map((ch) => (
+                                            <div key={ch.name} className="group p-6 rounded-[2rem] bg-gray-50/50 border border-gray-100 hover:bg-white hover:shadow-2xl transition-all duration-500">
+                                                <div className="flex items-center gap-4 mb-6"><div className="w-14 h-14 rounded-2xl bg-white shadow-sm flex items-center justify-center font-black text-indigo-500 text-xl group-hover:scale-110 transition-transform">{ch.name[0]}</div><div><p className="text-sm font-black text-gray-800 tracking-tight">{ch.name}</p><p className="text-[9px] text-emerald-500 font-black tracking-widest bg-emerald-50 px-2 py-0.5 rounded-full w-fit mt-1 uppercase">Optimized</p></div></div>
+                                                <div className="flex justify-between items-end">
+                                                    <div>
+                                                        <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5">{CHANNEL_METRICS_CONFIG[activeChannelMetric].label} Delta</p>
+                                                        <p className="text-xl font-black text-gray-700 tabular-nums">{Math.floor(ch[activeChannelMetric]).toLocaleString()}</p>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <div className={`px-3 py-1 bg-white rounded-xl shadow-sm border border-gray-50 text-[11px] font-black ${ch[activeChannelMetric + 'Growth'] >= 0 ? 'text-indigo-500' : 'text-rose-500'}`}>
+                                                            <div className="flex items-center gap-1">
+                                                                <Icon name="TrendingUp" size={10} strokeWidth={3} className={ch[activeChannelMetric + 'Growth'] < 0 ? 'rotate-180' : ''} />
+                                                                {ch[activeChannelMetric + 'Growth'] > 0 ? '+' : ''}{ch[activeChannelMetric + 'Growth']}%
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )) : <p className="text-sm text-gray-400 italic">読み込み中...</p>}
+                                    </div>
+                                </div>
+                                <div className="bg-gradient-to-br from-indigo-700 via-purple-800 to-pink-700 p-10 rounded-[2.5rem] shadow-2xl text-white flex flex-col justify-between relative overflow-hidden group">
+                                    <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/2 group-hover:bg-white/20 transition-all duration-700" />
+                                    <div className="relative z-10"><div className="w-16 h-16 bg-white/20 backdrop-blur-2xl rounded-2xl flex items-center justify-center mb-8 shadow-xl"><Icon name="TrendingUp" size={32} /></div><h3 className="font-black text-3xl mb-4 tracking-tighter italic">Strategic Analysis</h3><p className="text-indigo-100 text-sm leading-relaxed mb-10 font-medium">現在のポートフォリオでは <span className="text-white font-black underline decoration-pink-500 underline-offset-4 tracking-tight">{selectedKeywords[0] || "分析対象"}</span> が中心的な成長エンジンとなっています。</p></div>
+                                </div>
+                            </div>
+                        </div>
+                    </main>
+                </div>
+            );
+        };
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
