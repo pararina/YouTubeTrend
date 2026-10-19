@@ -129,6 +129,57 @@
             );
         };
 
+        const TRENDING_SORTS = {
+            delta: { label: '増加数' },
+            rate:  { label: '増加率' },
+            accel: { label: '加速度' }
+        };
+        
+        const TrendingList = ({ items, sortKey, setSortKey, loading }) => {
+            const sorted = useMemo(
+                () => [...items].sort((a, b) => (b[sortKey] ?? -1) - (a[sortKey] ?? -1)).slice(0, 20),
+                [items, sortKey]
+            );
+            return (
+                <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                        <div>
+                            <h3 className="font-black text-gray-800 text-lg tracking-tight">急上昇ランキング</h3>
+                            <p className="text-[10px] text-gray-300 font-black uppercase tracking-widest">Last 24h Rising Videos</p>
+                        </div>
+                        <div className="flex bg-gray-50 p-1 rounded-2xl border border-gray-100 shadow-inner">
+                            {Object.keys(TRENDING_SORTS).map(k => (
+                                <button key={k} onClick={() => setSortKey(k)}
+                                    className={`px-4 py-2 text-[10px] font-black rounded-xl transition-all ${sortKey === k ? 'bg-white shadow-md text-purple-600' : 'text-gray-400'}`}>
+                                    {TRENDING_SORTS[k].label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                    {loading ? <div className="h-64 rounded-2xl loading-shimmer" /> :
+                     sorted.length === 0 ? <p className="text-sm text-gray-300 italic py-10 text-center">24時間分以上のデータがある動画がまだありません</p> :
+                     <div className="space-y-3">
+                        {sorted.map((v, i) => (
+                            <a key={v.id} href={`https://www.youtube.com/watch?v=${v.id}`} target="_blank" rel="noreferrer"
+                               className="flex items-center gap-4 p-3 rounded-2xl hover:bg-gray-50 transition-all">
+                                <span className="w-6 text-center text-xs font-black text-gray-300">{i + 1}</span>
+                                <img src={`https://i.ytimg.com/vi/${v.id}/mqdefault.jpg`} className="w-28 h-16 object-cover rounded-xl bg-gray-100" loading="lazy" />
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-bold text-gray-800 truncate">{v.title || v.id}</p>
+                                    <p className="text-[10px] text-gray-400 font-bold truncate">{v.channel}</p>
+                                </div>
+                                <div className="text-right text-[11px] font-black tabular-nums shrink-0">
+                                    <p className="text-blue-500">+{v.delta.toLocaleString()}</p>
+                                    <p className="text-emerald-500">{v.rate != null ? `${v.rate}%` : '-'}</p>
+                                    <p className="text-pink-500">{v.accel != null ? `×${v.accel}` : '-'}</p>
+                                </div>
+                            </a>
+                        ))}
+                     </div>}
+                </div>
+            );
+        };
+
         const App = () => {
             const getInitialRange = (days) => {
                 const end = new Date(); const start = new Date();
@@ -153,6 +204,9 @@
             const [selectedHourlyDay, setSelectedHourlyDay] = useState('all');
 
             const [channelMetrics, setChannelMetrics] = useState([]);
+            const [trending, setTrending] = useState([]);
+            const [trendingSort, setTrendingSort] = useState('delta');
+            const [trendingLoading, setTrendingLoading] = useState(true);
             const [lastUpdate, setLastUpdate] = useState("-");
             const [loading, setLoading] = useState(true);
 
@@ -189,6 +243,14 @@
                         setLoading(false);
                     });
             }, [dateRange, selectedKeywords]);
+
+            useEffect(() => {
+                if (selectedKeywords.length === 0) { setTrending([]); setTrendingLoading(false); return; }
+                setTrendingLoading(true);
+                apiCall("getTrendingVideos", { filters: { selectedKeywords: selectedKeywords } })
+                    .then(res => { setTrending(res.items || []); setTrendingLoading(false); })
+                    .catch(err => { console.error(err); setTrendingLoading(false); });
+            }, [selectedKeywords]);
 
             const totals = useMemo(() => {
                 if (!data || !data.length) return { views: 0, likes: 0, comments: 0, videos: 0, viewGrowth: 0, likeGrowth: 0, commentGrowth: 0 };
@@ -256,6 +318,7 @@
                             <div className="flex items-center gap-2 text-[10px] font-black text-gray-400 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100"><Icon name="Clock" size={12} className="text-purple-400" /> LAST UPDATE: {lastUpdate}</div>
                         </header>
                         <div className="p-6 md:p-8 space-y-8 max-w-7xl mx-auto w-full">
+                            <TrendingList items={trending} sortKey={trendingSort} setSortKey={setTrendingSort} loading={trendingLoading} />
                             {/* KPI Cards */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                                 <StatCard label="Impressions" value={totals.views} growth={totals.viewGrowth} iconName="Eye" color="blue" loading={loading} />
