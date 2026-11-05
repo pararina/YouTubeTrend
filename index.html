@@ -49,6 +49,15 @@
         .rounded-\[2rem\]    { border-radius: 16px !important; }
         .bg-\[\#f9fbff\]     { background-color: #F6F4F0 !important; }
         button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid #F04A3A; outline-offset: 2px; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { scrollbar-width: none; }
+        @media (max-width: 639px) {
+          .p-6, .p-8, .p-10 { padding: 1rem !important; }
+          .space-y-8 > * + * { margin-top: 1rem !important; }
+          .gap-8 { gap: 1rem !important; }
+          .h-\[300px\] { height: 220px !important; }
+          .rounded-\[2\.5rem\] { border-radius: 16px !important; }
+        }
     </style>
 </head>
 <body>
@@ -131,12 +140,12 @@
 
         const StatCard = ({ label, value, growth, iconName, color, loading }) => {
             const colorMap = { blue: "bg-blue-50 text-blue-600", pink: "bg-pink-50 text-pink-500", amber: "bg-amber-50 text-amber-500", indigo: "bg-indigo-50 text-indigo-500" };
-            if (loading) return <div className="h-40 rounded-[2rem] loading-shimmer border border-gray-50"></div>;
+            if (loading) return <div className="h-28 md:h-40 rounded-[2rem] loading-shimmer border border-gray-50"></div>;
             return (
                 <div className="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm border border-gray-50 hover:shadow-xl transition-all duration-500 relative overflow-hidden group">
                     <div className="absolute bottom-0 right-0 w-24 h-24 bg-gray-50/50 rounded-full blur-3xl translate-y-1/2 translate-x-1/2 group-hover:bg-purple-50 transition-colors" />
-                    <div className="flex justify-between items-start mb-6 relative z-10">
-                        <div className={`p-4 rounded-2xl ${colorMap[color]} shadow-inner transition-transform group-hover:scale-110 duration-500`}>
+                    <div className="flex justify-between items-start mb-3 md:mb-6 relative z-10">
+                        <div className={`p-2.5 md:p-4 rounded-2xl ${colorMap[color]} shadow-inner transition-transform group-hover:scale-110 duration-500`}>
                             <Icon name={iconName} size={24} strokeWidth={3} />
                         </div>
                         {growth !== 0 && (
@@ -148,7 +157,7 @@
                     </div>
                     <div className="relative z-10">
                         <p className="text-[9px] font-black text-gray-300 uppercase tracking-[0.2em] mb-2">{label}</p>
-                        <h4 className="text-2xl md:text-3xl font-black text-gray-800 tabular-nums tracking-tighter italic">{Math.floor(value).toLocaleString()}</h4>
+                        <h4 className="text-xl md:text-3xl font-black text-gray-800 tabular-nums tracking-tighter">{Math.floor(value).toLocaleString()}</h4>
                     </div>
                 </div>
             );
@@ -156,6 +165,8 @@
         const GENRE_WINDOWS = ['6', '12', '24'];
 
         const GenreTrend = ({ data, windowHours, setWindowHours, selected, setSelected, loading }) => {
+            const [expanded, setExpanded] = useState(false);      // チップを全件出すか
+            const [moreVideos, setMoreVideos] = useState(false);  // スマホで動画を20本まで出すか
             const genres = data.genres || [];
             const maxDelta = genres.length ? genres[0].delta : 1;
             const current = genres.find(g => g.name === selected);
@@ -179,8 +190,23 @@
                     </div>
                     {loading ? <div className="h-96 rounded-2xl loading-shimmer" /> :
                      genres.length === 0 ? <p className="text-sm text-gray-300 italic py-10 text-center">集計できるデータがまだありません（記録が2回以上たまると表示されます）</p> :
-                     <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
-                        <div className="lg:col-span-2 space-y-1 max-h-[640px] overflow-y-auto custom-scrollbar pr-2">
+                    <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 lg:gap-8">
+                                    {/* スマホ：横スクロールのチップ */}
+                                    <div className="lg:hidden flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                                        {[{ name: 'ALL', label: 'すべて' }, ...(expanded ? genres : genres.slice(0, 10)).map(g => ({ name: g.name, label: `${g.type === 'tag' ? '#' : ''}${g.name}`, delta: g.delta }))].map(c => (
+                                            <button key={c.name} onClick={() => setSelected(c.name)}
+                                                className={`shrink-0 whitespace-nowrap px-3 py-2 rounded-full text-xs font-bold border transition-all ${selected === c.name ? 'bg-purple-500 border-purple-500 text-white' : 'bg-white border-gray-100 text-gray-600'}`}>
+                                                {c.label}
+                                                {c.delta ? <span className={`ml-1.5 tabular-nums ${selected === c.name ? 'text-white/80' : 'text-blue-500'}`}>+{formatYAxis(c.delta)}</span> : null}
+                                            </button>
+                                        ))}
+                                        {genres.length > 10 && (
+                                            <button onClick={() => setExpanded(!expanded)} className="shrink-0 whitespace-nowrap px-3 py-2 rounded-full text-xs font-bold text-gray-400 border border-dashed border-gray-200">
+                                                {expanded ? '閉じる' : `他${genres.length - 10}件`}
+                                            </button>
+                                        )}
+                                    </div>
+                                    <div className="hidden lg:block lg:col-span-2 space-y-1 max-h-[640px] overflow-y-auto custom-scrollbar pr-2">
                             <button onClick={() => setSelected('ALL')}
                                 className={`w-full text-left px-4 py-3 rounded-xl text-xs font-black transition-all ${selected === 'ALL' ? 'bg-purple-50 text-purple-700' : 'text-gray-400 hover:bg-gray-50'}`}>
                                 すべて（全ジャンル）
@@ -208,25 +234,33 @@
                                 {selected === 'ALL' || !current ? '全ジャンル' : selected} ・ 直近{windowHours}時間の増加 TOP20
                             </p>
                             {videos.map((v, i) => (
-                                <a key={v.id} href={`https://www.youtube.com/watch?v=${v.id}`} target="_blank" rel="noreferrer"
-                                   className="flex items-center gap-4 p-3 rounded-2xl hover:bg-gray-50 transition-all">
-                                    <span className={`w-6 text-center text-xs font-black ${i < 3 ? 'text-purple-500' : 'text-gray-300'}`}>{i + 1}</span>
-                                    <img src={`https://i.ytimg.com/vi/${v.id}/mqdefault.jpg`} className="w-28 h-16 object-cover rounded-xl bg-gray-100" loading="lazy" />
+                            <a key={v.id} href={`https://www.youtube.com/watch?v=${v.id}`} target="_blank" rel="noreferrer"
+                               className={`${i >= 10 && !moreVideos ? 'hidden sm:flex' : 'flex'} items-center gap-3 sm:gap-4 p-2 sm:p-3 rounded-2xl hover:bg-gray-50 transition-all`}>
+                                    <span className="w-5 sm:w-6 text-center text-xs font-black text-gray-300 shrink-0">{i + 1}</span>
+                                    <img src={`https://i.ytimg.com/vi/${v.id}/mqdefault.jpg`} className="w-24 h-14 sm:w-28 sm:h-16 object-cover rounded-xl bg-gray-100 shrink-0" loading="lazy" />
                                     <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-bold text-gray-800 truncate">{v.title || v.id}</p>
+                                        <p className="text-sm font-bold text-gray-800 leading-snug line-clamp-2">{v.title || v.id}</p>
                                         <p className="text-[10px] text-gray-400 font-bold truncate">{v.channel}{v.published ? ` ・ 公開 ${v.published}` : ''}</p>
+                                        <p className="sm:hidden text-[11px] font-black tabular-nums mt-0.5">
+                                            <span className="text-blue-500">+{v.delta.toLocaleString()}</span>
+                                            <span className="text-emerald-500 ml-2">{v.rate != null ? `${v.rate}%` : '-'}</span>
+                                            <span className="text-pink-500 ml-2">{v.accel != null ? `×${v.accel}` : '-'}</span>
+                                        </p>
                                     </div>
-                                    <div className="text-right text-[11px] font-black tabular-nums shrink-0">
+                                    <div className="hidden sm:block text-right text-[11px] font-black tabular-nums shrink-0">
                                         <p className="text-blue-500">+{v.delta.toLocaleString()}</p>
                                         <p className="text-gray-300">{v.views.toLocaleString()}</p>
                                     </div>
                                 </a>
-                            ))}
-                        </div>
-                     </div>}
+                             ))}
+                    {videos.length > 10 && !moreVideos && (
+                        <button onClick={() => setMoreVideos(true)} className="sm:hidden w-full py-3 text-xs font-bold text-gray-500 bg-gray-50 rounded-xl">もっと見る（残り{videos.length - 10}本）</button>
+                    )}
                 </div>
-            );
-        };
+             </div>}
+        </div>
+    );
+};
         
         const TRENDING_SORTS = {
             delta: { label: '増加数' },
@@ -234,8 +268,9 @@
             accel: { label: '加速度' }
         };
         
-        const TrendingList = ({ items, sortKey, setSortKey, loading }) => {
-            const sorted = useMemo(
+            const TrendingList = ({ items, sortKey, setSortKey, loading }) => {
+                const [more, setMore] = useState(false);
+                const sorted = useMemo(
                 () => [...items].sort((a, b) => (b[sortKey] ?? -1) - (a[sortKey] ?? -1)).slice(0, 20),
                 [items, sortKey]
             );
@@ -257,27 +292,34 @@
                     </div>
                     {loading ? <div className="h-64 rounded-2xl loading-shimmer" /> :
                      sorted.length === 0 ? <p className="text-sm text-gray-300 italic py-10 text-center">24時間分以上のデータがある動画がまだありません</p> :
-                     <div className="space-y-3">
+                    <div className="space-y-1 sm:space-y-3">
                         {sorted.map((v, i) => (
                             <a key={v.id} href={`https://www.youtube.com/watch?v=${v.id}`} target="_blank" rel="noreferrer"
-                               className="flex items-center gap-4 p-3 rounded-2xl hover:bg-gray-50 transition-all">
-                                <span className="w-6 text-center text-xs font-black text-gray-300">{i + 1}</span>
-                                <img src={`https://i.ytimg.com/vi/${v.id}/mqdefault.jpg`} className="w-28 h-16 object-cover rounded-xl bg-gray-100" loading="lazy" />
+                               className={`${i >= 10 && !more ? 'hidden sm:flex' : 'flex'} items-center gap-3 sm:gap-4 p-2 sm:p-3 rounded-2xl hover:bg-gray-50 transition-all`}>
+                                <span className={`w-5 sm:w-6 text-center text-xs font-black shrink-0 ${i < 3 ? 'text-purple-500' : 'text-gray-300'}`}>{i + 1}</span>
+                                <img src={`https://i.ytimg.com/vi/${v.id}/mqdefault.jpg`} className="w-24 h-14 sm:w-28 sm:h-16 object-cover rounded-xl bg-gray-100 shrink-0" loading="lazy" />
                                 <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-bold text-gray-800 truncate">{v.title || v.id}</p>
+                                    <p className="text-sm font-bold text-gray-800 leading-snug line-clamp-2">{v.title || v.id}</p>
                                     <p className="text-[10px] text-gray-400 font-bold truncate">{v.channel}{v.published ? ` ・ 公開 ${v.published}` : ''}</p>
+                                    <p className="sm:hidden text-[11px] font-black tabular-nums mt-0.5">
+                                        <span className="text-blue-500">+{v.delta.toLocaleString()}</span>
+                                        <span className="text-gray-400 ml-2">累計 {v.views.toLocaleString()}</span>
+                                    </p>
                                 </div>
-                                <div className="text-right text-[11px] font-black tabular-nums shrink-0">
+                                <div className="hidden sm:block text-right text-[11px] font-black tabular-nums shrink-0">
                                     <p className="text-blue-500">+{v.delta.toLocaleString()}</p>
                                     <p className="text-emerald-500">{v.rate != null ? `${v.rate}%` : '-'}</p>
                                     <p className="text-pink-500">{v.accel != null ? `×${v.accel}` : '-'}</p>
                                 </div>
                             </a>
                         ))}
-                     </div>}
-                </div>
-            );
-        };
+                {sorted.length > 10 && !more && (
+                    <button onClick={() => setMore(true)} className="sm:hidden w-full py-3 text-xs font-bold text-gray-500 bg-gray-50 rounded-xl">もっと見る（残り{sorted.length - 10}本）</button>
+                )}
+             </div>}
+        </div>
+    );
+};
 
         const App = () => {
             const getInitialRange = (days) => {
@@ -313,6 +355,8 @@
             const [genreWindow, setGenreWindow] = useState('6');
             const [selectedGenre, setSelectedGenre] = useState('ALL');
             const [genreLoading, setGenreLoading] = useState(true);
+            const [showDetails, setShowDetails] = useState(false);
+            const [showAllCh, setShowAllCh] = useState(false);
             // APIを使った初期データの取得
             useEffect(() => {
                 apiCall("getInitialData")
@@ -421,7 +465,8 @@
                                 </section>
                             </div>
                         </div>
-                    </aside>
+                     </aside>
+                    {isSidebarOpen && <div className="fixed inset-0 z-40 bg-black/30 lg:hidden" onClick={() => setIsSidebarOpen(false)} />}
                     <main className="flex-1 flex flex-col h-screen overflow-y-auto relative custom-scrollbar">
                         <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-xl border-b border-gray-100 px-6 py-4 flex items-center justify-between">
                             <div className="flex items-center gap-4"><button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-2"><Icon name="Menu" size={22} className="text-gray-600" /></button><h2 className="font-black text-gray-800 text-lg hidden sm:block">今日のネタ探し</h2></div>
@@ -431,13 +476,17 @@
                             <TrendingList items={trending} sortKey={trendingSort} setSortKey={setTrendingSort} loading={trendingLoading} />
                             <GenreTrend data={genreData} windowHours={genreWindow} setWindowHours={setGenreWindow} selected={selectedGenre} setSelected={setSelectedGenre} loading={genreLoading} />
                             {/* KPI Cards */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
                                 <StatCard label="総再生数" value={totals.views} growth={totals.viewGrowth} iconName="Eye" color="blue" loading={loading} />
                                 <StatCard label="総高評価" value={totals.likes} growth={totals.likeGrowth} iconName="Heart" color="pink" loading={loading} />
                                 <StatCard label="総コメント" value={totals.comments} growth={totals.commentGrowth} iconName="MessageCircle" color="amber" loading={loading} />
                                 <StatCard label="動画数" value={totals.videos} growth={0} iconName="Video" color="indigo" loading={loading} />
                             </div>
 
+                            <button onClick={() => setShowDetails(!showDetails)} className="lg:hidden w-full py-3 rounded-2xl bg-white border border-gray-100 text-sm font-bold text-gray-600 shadow-sm">
+                                {showDetails ? '詳細グラフを閉じる ▲' : '詳細グラフを見る（サイドバーのキーワード・期間が反映）▼'}
+                            </button>
+                            <div className={`${showDetails ? 'block' : 'hidden'} lg:block space-y-8`}>
                             {/* Row 1: Stock & Flow */}
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                                 <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm transition-all hover:shadow-lg">
@@ -542,8 +591,8 @@
                                         </div>
                                     </div>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
-                                        {channelMetrics.length > 0 ? channelMetrics.map((ch) => (
-                                            <div key={ch.name} className="group p-6 rounded-[2rem] bg-gray-50/50 border border-gray-100 hover:bg-white hover:shadow-2xl transition-all duration-500">
+                                       {channelMetrics.length > 0 ? channelMetrics.map((ch, idx) => (
+                                            <div key={ch.name} className={`${idx >= 6 && !showAllCh ? 'hidden sm:block' : ''} group p-6 rounded-[2rem] bg-gray-50/50 border border-gray-100 hover:bg-white hover:shadow-2xl transition-all duration-500`}>
                                                 <div className="flex items-center gap-4 mb-6"><div className="w-14 h-14 rounded-2xl bg-white shadow-sm flex items-center justify-center font-black text-indigo-500 text-xl group-hover:scale-110 transition-transform">{ch.name[0]}</div><div><p className="text-sm font-black text-gray-800 tracking-tight">{ch.name}</p></div></div>
                                                 <div className="flex justify-between items-end">
                                                     <div>
@@ -560,13 +609,17 @@
                                                     </div>
                                                 </div>
                                             </div>
-                                        )) : <p className="text-sm text-gray-400 italic">読み込み中...</p>}
+                                         )) : <p className="text-sm text-gray-400 italic">読み込み中...</p>}
+                                        {channelMetrics.length > 6 && !showAllCh && (
+                                            <button onClick={() => setShowAllCh(true)} className="sm:hidden w-full py-3 text-xs font-bold text-gray-500 bg-gray-50 rounded-xl">もっと見る（残り{channelMetrics.length - 6}件）</button>
+                                        )}
                                     </div>
                                 </div>
                                 <div className="bg-gradient-to-br from-indigo-700 via-purple-800 to-pink-700 p-10 rounded-[2.5rem] shadow-2xl text-white flex flex-col justify-between relative overflow-hidden group">
                                     <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/2 group-hover:bg-white/20 transition-all duration-700" />
                                     <div className="relative z-10"><div className="w-16 h-16 bg-white/20 backdrop-blur-2xl rounded-2xl flex items-center justify-center mb-8 shadow-xl"><Icon name="TrendingUp" size={32} /></div><h3 className="font-black text-3xl mb-4 tracking-tighter italic">Strategic Analysis</h3><p className="text-indigo-100 text-sm leading-relaxed mb-10 font-medium">現在のポートフォリオでは <span className="text-white font-black underline decoration-pink-500 underline-offset-4 tracking-tight">{selectedKeywords[0] || "分析対象"}</span> が中心的な成長エンジンとなっています。</p></div>
                                 </div>
+                            </div>
                             </div>
                         </div>
                     </main>
